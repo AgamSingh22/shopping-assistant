@@ -1,0 +1,5 @@
+[
+  { "id": "p1", "name": "Organic Apples 1kg", "brand": "GreenLeaf", "price": 199, "category": "produce", "image": "https://via.placeholder.com/120" },
+  { "id": "p2", "name": "Almond Milk 1L", "brand": "NutriJoy", "price": 249, "category": "dairy", "image": "https://via.placeholder.com/120" },
+  { "id": "p3", "name": "Whole Wheat Bread", "brand": "BakeWell", "price": 49, "category": "bakery", "image": "https://via.placeholder.com/120" }
+]

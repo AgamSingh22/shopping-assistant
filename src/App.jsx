@@ -1,113 +1,150 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { motion } from "framer-motion";
+import { Mic, ShoppingCart, Send } from "lucide-react";
+
 import useSpeech from "./hooks/useSpeech";
 import useShoppingList from "./hooks/useShoppingList";
 import parseCommand from "./lib/parseCommand";
 import categorize from "./lib/categorize";
+
 import ShoppingList from "./components/ShoppingList";
-import Suggestions from "./components/Suggestions";
-import SearchResults from "./components/SearchResults";
+import Toast from "./components/Toast";
+import SuggestionsPanel from "./components/SuggestionsPanel";
+import useSmartAI from "./hooks/useSmartAI";
 
 export default function App() {
-  const { items, addItem, removeItem, inc, dec } = useShoppingList();
-  const { isSupported, isListening, transcript, error, start, stop, reset } =
+  const { isListening, transcript, start, stop, reset, setLang, lang } =
     useSpeech("en-IN", { interim: true, continuous: true });
 
-  const [tab, setTab] = useState("list");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchPrice, setSearchPrice] = useState(null);
+  const { items, addItem, removeItem, inc, dec, frequentItems } =
+    useShoppingList();
+
+  const { suggestions, seasonal } = useSmartAI(items);
+
+  const [toast, setToast] = useState("");
+  const [commandText, setCommandText] = useState("");
+  const inputRef = useRef(null);
 
   const applyCommand = (text) => {
     const cmd = parseCommand(text || "");
     if (!cmd) return;
+
     if (cmd.intent === "add") {
       addItem(cmd.item, cmd.qty || 1, categorize(cmd.item));
-      setTab("list");
+      setToast(`✅ Added ${cmd.item}`);
     }
     if (cmd.intent === "remove") {
       removeItem(cmd.item);
-      setTab("list");
-    }
-    if (cmd.intent === "search") {
-      setTab("search");
-      setSearchQuery(cmd.item);
-      setSearchPrice(cmd.priceMax);
+      setToast(`❌ Removed ${cmd.item}`);
     }
     reset();
+    setCommandText("");
+    setTimeout(() => setToast(""), 2000);
   };
 
+  const handleManualSubmit = () => {
+    if (commandText.trim()) {
+      applyCommand(commandText);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter") {
+      handleManualSubmit();
+    }
+  };
+
+  const focusInput = () => {
+    inputRef.current.focus();
+  };
+
+  if (transcript && !isListening) {
+    applyCommand(transcript);
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-slate-50 to-slate-100 text-slate-800">
-      <div className="max-w-lg mx-auto p-4 md:p-6">
-        {/* Header */}
-        <header className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-2xl bg-[#2D5FFF] text-white grid place-content-center shadow-sm">🛒</div>
-            <h1 className="text-2xl font-semibold tracking-tight">Cartana</h1>
-          </div>
-          <span className="text-xs px-2 py-1 rounded-full bg-white/80 border shadow-sm">
-            {isSupported ? (isListening ? "Listening…" : "Idle") : "Speech not supported"}
-          </span>
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-100 to-orange-50 flex text-slate-800">
+      <Toast message={toast} />
+
+      {/* Sidebar Cart */}
+      <aside className="w-72 bg-white shadow-lg border-r border-pink-200 flex flex-col">
+        <header className="p-4 border-b border-pink-200 flex items-center gap-2">
+          <ShoppingCart className="text-pink-500" />
+          <h2 className="font-bold text-lg">Your Cart</h2>
         </header>
+        <div className="flex-1 overflow-y-auto p-3">
+          <ShoppingList
+            items={items}
+            inc={inc}
+            dec={dec}
+            removeItem={removeItem}
+          />
+        </div>
+      </aside>
 
-        {/* Voice card */}
-        <section className="rounded-2xl bg-white/80 backdrop-blur border shadow-sm p-4">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Transcript</div>
-          <div className="mt-1 min-h-6 font-medium">{transcript || "—"}</div>
-          {error && <div className="text-sm text-red-600 mt-1">Error: {error}</div>}
+      {/* Main Area */}
+      <main className="flex-1 flex flex-col">
+        {/* Top Controls */}
+        <div className="p-4 border-b border-pink-200 flex items-center gap-4 bg-white shadow-sm">
+          <motion.button
+            onClick={isListening ? stop : start}
+            animate={{
+              scale: isListening ? [1, 1.1, 1] : 1,
+              boxShadow: isListening
+                ? [
+                    "0 0 0 0 rgba(236,72,153,0.7)",
+                    "0 0 0 20px rgba(236,72,153,0)",
+                  ]
+                : "0 0 0 0 rgba(0,0,0,0)",
+            }}
+            transition={{ duration: 1.2, repeat: Infinity }}
+            className="h-12 w-12 rounded-full bg-pink-500 text-white flex items-center justify-center shadow-lg"
+          >
+            <Mic className="h-6 w-6" />
+          </motion.button>
 
-          <div className="mt-3 flex gap-2">
-            {!isListening ? (
-              <button
-                className="px-4 py-2 rounded-xl bg-[#2D5FFF] text-white shadow hover:opacity-95 active:scale-[.98]"
-                onClick={start}
-              >
-                Start 🎤
-              </button>
-            ) : (
-              <button
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white shadow hover:opacity-95 active:scale-[.98]"
-                onClick={() => { stop(); applyCommand(transcript); }}
-              >
-                Stop & Apply
-              </button>
-            )}
+          <div className="flex-1 relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={commandText}
+              onChange={(e) => setCommandText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              placeholder={
+                transcript || "Speak or type your shopping command..."
+              }
+              className="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-pink-400"
+            />
             <button
-              className="px-4 py-2 rounded-xl border bg-white hover:bg-slate-50 active:scale-[.98]"
-              onClick={() => applyCommand(transcript)}
+              onClick={handleManualSubmit}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-pink-500"
             >
-              Apply Command
+              <Send size={20} />
             </button>
           </div>
 
-          {/* Hints */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {["add 2 almond milk", "remove bread", "find apples under 200"].map(h => (
-              <span key={h} className="text-xs px-2 py-1 rounded-full border bg-white">{h}</span>
-            ))}
-          </div>
-        </section>
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            className="text-xs border rounded px-2 py-1 bg-white shadow-sm"
+          >
+            <option value="en-IN">🇬🇧 EN</option>
+            <option value="hi-IN">🇮🇳 HI</option>
+            <option value="fr-FR">🇫🇷 FR</option>
+          </select>
+        </div>
 
-        {/* Segmented tabs */}
-        <nav className="mt-4 grid grid-cols-3 p-1 rounded-xl bg-white/70 border shadow-sm">
-          {["list","suggestions","search"].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={[
-                "text-sm py-2 rounded-lg transition",
-                tab===t ? "bg-[#2D5FFF] text-white shadow" : "hover:bg-slate-100"
-              ].join(" ")}
-            >
-              {t[0].toUpperCase()+t.slice(1)}
-            </button>
-          ))}
-        </nav>
-
-        {/* Panels */}
-        {tab === "list"        && <ShoppingList items={items} inc={inc} dec={dec} removeItem={removeItem} />}
-        {tab === "suggestions" && <Suggestions items={items} onAdd={(n)=>addItem(n,1,categorize(n))} />}
-        {tab === "search"      && <SearchResults query={searchQuery} priceMax={searchPrice} />}
-      </div>
+        {/* Suggestions */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <h2 className="text-xl font-semibold mb-4">Smart Suggestions</h2>
+          <SuggestionsPanel
+            frequent={frequentItems}
+            seasonal={seasonal}
+            smart={suggestions}
+            onAdd={(n) => addItem(n, 1, categorize(n))}
+          />
+        </div>
+      </main>
     </div>
   );
 }
